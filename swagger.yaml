@@ -1,0 +1,2361 @@
+openapi: 3.0.3
+info:
+  title: Messenger Lite Clone API
+  description: |
+    # 輕量版即時通訊應用程式 API 規格文件
+
+    本文件提供完整的 API 規格說明，包含系統架構設計、資料庫結構與 API 端點詳細說明。
+
+    ## 🏗️ 系統架構概覽
+
+    系統採用微服務架構，包含以下主要組件：
+
+    - **客戶端層**: 支援移動應用程式、網頁應用程式、桌面應用程式
+    - **API 閘道**: 負載均衡與 API 路由
+    - **應用服務層**: Express.js API 服務與即時通訊服務
+    - **資料層**: PostgreSQL、MongoDB、Redis 多重資料儲存
+    - **外部服務**: 檔案儲存、推播通知、第三方整合服務
+    - **監控層**: 日誌系統、效能監控、應用程式監控
+
+    ## 📋 功能模組
+
+    系統基於 BDD (行為驅動開發) 設計，包含以下核心功能模組：
+
+    1. **🔐 使用者管理**: 註冊、登入、個人資料管理
+    2. **👥 好友管理**: 搜尋、邀請、分組管理
+    3. **💬 即時訊息**: 多媒體訊息、狀態追蹤
+    4. **👨‍👩‍👧‍👦 群組聊天**: 群組管理、權限控制
+    5. **🔔 通知系統**: 推播通知、勿打擾設定
+    6. **🔒 狀態隱私**: 線上狀態、隱私控制
+    7. **📎 檔案上傳**: 圖片、檔案、語音處理
+
+    ## 🎯 設計原則
+
+    - **RESTful API**: 遵循 REST 設計原則
+    - **JWT 認證**: 無狀態身份驗證
+    - **多語言支援**: 完整繁體中文支援
+    - **高可用性**: 支援水平擴展與故障轉移
+    - **安全第一**: 多層安全防護機制
+  version: 1.0.0
+  contact:
+    name: Messenger Lite Clone Team
+    email: support@messenger-lite.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.messenger-lite.com/v1
+    description: 正式環境伺服器
+  - url: https://staging-api.messenger-lite.com/v1
+    description: 測試環境伺服器
+  - url: http://localhost:3000/api/v1
+    description: 本地開發伺服器
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: 使用者管理
+    description: 使用者註冊、登入、個人資料管理相關 API
+  - name: 好友管理
+    description: 好友搜尋、邀請、管理相關 API
+  - name: 即時訊息
+    description: 一對一訊息傳送、編輯、刪除相關 API
+  - name: 群組聊天
+    description: 群組建立、管理、群組訊息相關 API
+  - name: 通知系統
+    description: 推播通知、通知設定相關 API
+  - name: 線上狀態與隱私
+    description: 使用者狀態管理、隱私設定相關 API
+  - name: 檔案上傳
+    description: 圖片、檔案、語音訊息上傳相關 API
+
+paths:
+  # ==================== 使用者管理 ====================
+  /auth/register:
+    post:
+      tags:
+        - 使用者管理
+      summary: 使用者註冊
+      description: 註冊新的使用者帳號，需要提供基本資料並進行電子郵件與手機號碼驗證
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+                - phoneNumber
+              properties:
+                username:
+                  type: string
+                  description: 使用者名稱（顯示名稱）
+                  minLength: 2
+                  maxLength: 50
+                  example: "john_doe"
+                email:
+                  type: string
+                  format: email
+                  description: 電子郵件地址
+                  example: "john@example.com"
+                password:
+                  type: string
+                  description: 密碼（至少8字元，包含英數字）
+                  minLength: 8
+                  pattern: "^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d@$!%*#?&]{8,}$"
+                  example: "SecurePass123"
+                phoneNumber:
+                  type: string
+                  description: 手機號碼（國際格式）
+                  pattern: "^\\+[1-9]\\d{1,14}$"
+                  example: "+1234567890"
+                profilePicture:
+                  type: string
+                  format: binary
+                  description: 大頭照（選填）
+                acceptTerms:
+                  type: boolean
+                  description: 同意服務條款與隱私政策
+                  example: true
+      responses:
+        '201':
+          description: 註冊成功，需要進行電子郵件與手機驗證
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "註冊成功，請檢查您的電子郵件與手機簡訊以完成驗證"
+                  userId:
+                    type: string
+                    example: "user_12345"
+                  verificationRequired:
+                    type: object
+                    properties:
+                      email:
+                        type: boolean
+                        example: true
+                      phone:
+                        type: boolean
+                        example: true
+        '400':
+          description: 註冊資料不符合要求
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 電子郵件或手機號碼已被註冊
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags:
+        - 使用者管理
+      summary: 使用者登入
+      description: 使用電子郵件或手機號碼登入系統
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - identifier
+                - password
+              properties:
+                identifier:
+                  type: string
+                  description: 電子郵件或手機號碼
+                  example: "john@example.com"
+                password:
+                  type: string
+                  description: 密碼
+                  example: "SecurePass123"
+                deviceInfo:
+                  type: object
+                  description: 裝置資訊（用於推播通知）
+                  properties:
+                    deviceType:
+                      type: string
+                      enum: [mobile, desktop, web]
+                      example: "mobile"
+                    deviceToken:
+                      type: string
+                      description: 推播通知 token
+                      example: "fcm_token_123"
+      responses:
+        '200':
+          description: 登入成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "登入成功"
+                  accessToken:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  refreshToken:
+                    type: string
+                    example: "refresh_token_123"
+                  user:
+                    $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: 登入失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '423':
+          description: 帳號被停用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags:
+        - 使用者管理
+      summary: 使用者登出
+      description: 登出系統並清除登入狀態
+      responses:
+        '200':
+          description: 登出成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "登出成功"
+
+  /auth/verify/email:
+    post:
+      tags:
+        - 使用者管理
+      summary: 電子郵件驗證
+      description: 驗證使用者的電子郵件地址
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - verificationCode
+              properties:
+                userId:
+                  type: string
+                  description: 使用者 ID
+                  example: "user_12345"
+                verificationCode:
+                  type: string
+                  description: 6位數驗證碼
+                  pattern: "^\\d{6}$"
+                  example: "123456"
+      responses:
+        '200':
+          description: 電子郵件驗證成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "電子郵件驗證成功"
+
+  /auth/verify/phone:
+    post:
+      tags:
+        - 使用者管理
+      summary: 手機號碼驗證
+      description: 驗證使用者的手機號碼
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - verificationCode
+              properties:
+                userId:
+                  type: string
+                  description: 使用者 ID
+                  example: "user_12345"
+                verificationCode:
+                  type: string
+                  description: 6位數驗證碼
+                  pattern: "^\\d{6}$"
+                  example: "654321"
+      responses:
+        '200':
+          description: 手機號碼驗證成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "手機號碼驗證成功"
+
+  /profile:
+    get:
+      tags:
+        - 使用者管理
+      summary: 取得個人資料
+      description: 取得目前登入使用者的個人資料
+      responses:
+        '200':
+          description: 成功取得個人資料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+    put:
+      tags:
+        - 使用者管理
+      summary: 更新個人資料
+      description: 更新使用者的個人資料
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  description: 顯示名稱
+                  minLength: 2
+                  maxLength: 50
+                  example: "John Updated"
+                statusMessage:
+                  type: string
+                  description: 個人狀態訊息
+                  maxLength: 200
+                  example: "Busy at work"
+                privacySettings:
+                  $ref: '#/components/schemas/PrivacySettings'
+      responses:
+        '200':
+          description: 個人資料更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "個人資料更新成功"
+                  user:
+                    $ref: '#/components/schemas/UserProfile'
+
+  /profile/avatar:
+    post:
+      tags:
+        - 使用者管理
+      summary: 上傳大頭照
+      description: 上傳並更新使用者的大頭照
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - avatar
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: 大頭照檔案（JPG, PNG, 最大 5MB）
+      responses:
+        '200':
+          description: 大頭照上傳成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "大頭照更新成功"
+                  avatarUrl:
+                    type: string
+                    example: "https://cdn.messenger-lite.com/avatars/user_12345.jpg"
+
+  # ==================== 好友管理 ====================
+  /friends/search:
+    get:
+      tags:
+        - 好友管理
+      summary: 搜尋使用者
+      description: 透過電子郵件、手機號碼或使用者名稱搜尋其他使用者
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 搜尋關鍵字（電子郵件、手機號碼或使用者名稱）
+          example: "jane@example.com"
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [email, phone, username, all]
+            default: all
+          description: 搜尋類型
+      responses:
+        '200':
+          description: 搜尋結果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSearchResult'
+
+  /friends/requests:
+    get:
+      tags:
+        - 好友管理
+      summary: 取得好友邀請列表
+      description: 取得收到和發送的好友邀請列表
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [received, sent, all]
+            default: all
+          description: 邀請類型
+      responses:
+        '200':
+          description: 好友邀請列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  received:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FriendRequest'
+                  sent:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FriendRequest'
+
+    post:
+      tags:
+        - 好友管理
+      summary: 發送好友邀請
+      description: 向指定使用者發送好友邀請
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targetUserId
+              properties:
+                targetUserId:
+                  type: string
+                  description: 目標使用者 ID
+                  example: "user_67890"
+                message:
+                  type: string
+                  description: 邀請訊息（選填）
+                  maxLength: 200
+                  example: "Hi, let's be friends!"
+      responses:
+        '201':
+          description: 好友邀請發送成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "好友邀請已發送"
+                  requestId:
+                    type: string
+                    example: "request_123"
+
+  /friends/requests/{requestId}/accept:
+    post:
+      tags:
+        - 好友管理
+      summary: 接受好友邀請
+      description: 接受指定的好友邀請
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 好友邀請 ID
+          example: "request_123"
+      responses:
+        '200':
+          description: 好友邀請接受成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "已成為好友"
+                  friend:
+                    $ref: '#/components/schemas/Friend'
+
+  /friends/requests/{requestId}/reject:
+    post:
+      tags:
+        - 好友管理
+      summary: 拒絕好友邀請
+      description: 拒絕指定的好友邀請
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 好友邀請 ID
+          example: "request_123"
+      responses:
+        '200':
+          description: 好友邀請拒絕成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "好友邀請已拒絕"
+
+  /friends/requests/{requestId}/withdraw:
+    delete:
+      tags:
+        - 好友管理
+      summary: 撤回好友邀請
+      description: 撤回已發送的好友邀請
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 好友邀請 ID
+          example: "request_123"
+      responses:
+        '200':
+          description: 好友邀請撤回成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "好友邀請已撤回"
+
+  /friends:
+    get:
+      tags:
+        - 好友管理
+      summary: 取得好友列表
+      description: 取得使用者的好友列表
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: 搜尋好友名稱
+          example: "jane"
+        - name: group
+          in: query
+          schema:
+            type: string
+          description: 好友分組篩選
+          example: "work"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [online, offline, all]
+            default: all
+          description: 線上狀態篩選
+      responses:
+        '200':
+          description: 好友列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  friends:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Friend'
+                  total:
+                    type: integer
+                    example: 150
+
+  /friends/{friendId}:
+    delete:
+      tags:
+        - 好友管理
+      summary: 刪除好友
+      description: 從好友列表中移除指定好友
+      parameters:
+        - name: friendId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 好友 ID
+          example: "user_67890"
+      responses:
+        '200':
+          description: 好友刪除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "好友已移除"
+
+  /friends/groups:
+    get:
+      tags:
+        - 好友管理
+      summary: 取得好友分組列表
+      description: 取得使用者建立的好友分組列表
+      responses:
+        '200':
+          description: 好友分組列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FriendGroup'
+
+    post:
+      tags:
+        - 好友管理
+      summary: 建立好友分組
+      description: 建立新的好友分組
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: 分組名稱
+                  minLength: 1
+                  maxLength: 50
+                  example: "Work Colleagues"
+                memberIds:
+                  type: array
+                  items:
+                    type: string
+                  description: 初始成員 ID 列表
+                  example: ["user_67890", "user_11111"]
+      responses:
+        '201':
+          description: 好友分組建立成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "好友分組建立成功"
+                  group:
+                    $ref: '#/components/schemas/FriendGroup'
+
+  /friends/qr-code:
+    get:
+      tags:
+        - 好友管理
+      summary: 生成 QR Code
+      description: 生成用於新增好友的 QR Code
+      responses:
+        '200':
+          description: QR Code 生成成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  qrCode:
+                    type: string
+                    description: QR Code 圖片的 Base64 編碼
+                    example: "data:image/png;base64,iVBORw0KGgoAAAANS..."
+                  qrData:
+                    type: string
+                    description: QR Code 包含的資料
+                    example: "messenger://friend/user_12345"
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    description: QR Code 過期時間
+                    example: "2024-01-01T12:00:00Z"
+
+  # ==================== 即時訊息 ====================
+  /conversations:
+    get:
+      tags:
+        - 即時訊息
+      summary: 取得對話列表
+      description: 取得使用者的所有對話列表
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: 每頁筆數
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: 偏移量
+      responses:
+        '200':
+          description: 對話列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  conversations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Conversation'
+                  total:
+                    type: integer
+                    example: 25
+
+  /conversations/{conversationId}/messages:
+    get:
+      tags:
+        - 即時訊息
+      summary: 取得對話訊息
+      description: 取得指定對話的訊息列表
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 對話 ID
+          example: "conv_123"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: 每頁筆數
+        - name: before
+          in: query
+          schema:
+            type: string
+          description: 取得指定訊息 ID 之前的訊息（用於載入更多歷史訊息）
+          example: "msg_456"
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: 搜尋關鍵字
+          example: "meeting"
+      responses:
+        '200':
+          description: 訊息列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  hasMore:
+                    type: boolean
+                    example: true
+
+    post:
+      tags:
+        - 即時訊息
+      summary: 發送訊息
+      description: 向指定對話發送訊息
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 對話 ID
+          example: "conv_123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - content
+              properties:
+                type:
+                  type: string
+                  enum: [text, image, file, voice]
+                  description: 訊息類型
+                  example: "text"
+                content:
+                  type: string
+                  description: 訊息內容
+                  maxLength: 2000
+                  example: "Hello Jane!"
+                mediaUrl:
+                  type: string
+                  description: 媒體檔案 URL（圖片、檔案、語音訊息）
+                  example: "https://cdn.messenger-lite.com/media/12345.jpg"
+                replyToMessageId:
+                  type: string
+                  description: 回覆的訊息 ID（選填）
+                  example: "msg_789"
+      responses:
+        '201':
+          description: 訊息發送成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    $ref: '#/components/schemas/Message'
+
+  /messages/{messageId}:
+    put:
+      tags:
+        - 即時訊息
+      summary: 編輯訊息
+      description: 編輯已發送的訊息（5分鐘內）
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 訊息 ID
+          example: "msg_123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  description: 新的訊息內容
+                  maxLength: 2000
+                  example: "Hello Jane, how are you?"
+      responses:
+        '200':
+          description: 訊息編輯成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    $ref: '#/components/schemas/Message'
+
+    delete:
+      tags:
+        - 即時訊息
+      summary: 刪除訊息
+      description: 刪除自己發送的訊息
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 訊息 ID
+          example: "msg_123"
+      responses:
+        '200':
+          description: 訊息刪除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "訊息已刪除"
+
+  /messages/{messageId}/read:
+    post:
+      tags:
+        - 即時訊息
+      summary: 標記訊息為已讀
+      description: 標記指定訊息為已讀狀態
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 訊息 ID
+          example: "msg_123"
+      responses:
+        '200':
+          description: 訊息標記為已讀成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "訊息已標記為已讀"
+
+  # ==================== 群組聊天 ====================
+  /groups:
+    get:
+      tags:
+        - 群組聊天
+      summary: 取得群組列表
+      description: 取得使用者參與的群組列表
+      responses:
+        '200':
+          description: 群組列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  groups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Group'
+
+    post:
+      tags:
+        - 群組聊天
+      summary: 建立群組
+      description: 建立新的群組聊天
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - memberIds
+              properties:
+                name:
+                  type: string
+                  description: 群組名稱
+                  minLength: 1
+                  maxLength: 50
+                  example: "Team Discussion"
+                description:
+                  type: string
+                  description: 群組描述
+                  maxLength: 200
+                  example: "Our project team"
+                memberIds:
+                  type: array
+                  items:
+                    type: string
+                  description: 初始成員 ID 列表（不包括創建者）
+                  minItems: 2
+                  maxItems: 49
+                  example: ["user_67890", "user_11111"]
+                isPrivate:
+                  type: boolean
+                  description: 是否為私人群組
+                  default: false
+                  example: false
+      responses:
+        '201':
+          description: 群組建立成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  group:
+                    $ref: '#/components/schemas/Group'
+
+  /groups/{groupId}:
+    get:
+      tags:
+        - 群組聊天
+      summary: 取得群組資訊
+      description: 取得指定群組的詳細資訊
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+      responses:
+        '200':
+          description: 群組資訊
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+
+    put:
+      tags:
+        - 群組聊天
+      summary: 更新群組資訊
+      description: 更新群組名稱、描述等資訊（僅管理員）
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 群組名稱
+                  minLength: 1
+                  maxLength: 50
+                  example: "Project Alpha Team"
+                description:
+                  type: string
+                  description: 群組描述
+                  maxLength: 200
+                  example: "Alpha project development team"
+                isPrivate:
+                  type: boolean
+                  description: 是否為私人群組
+                  example: true
+      responses:
+        '200':
+          description: 群組資訊更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  group:
+                    $ref: '#/components/schemas/Group'
+
+    delete:
+      tags:
+        - 群組聊天
+      summary: 刪除群組
+      description: 永久刪除群組（僅管理員）
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+      responses:
+        '200':
+          description: 群組刪除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "群組已刪除"
+
+  /groups/{groupId}/members:
+    get:
+      tags:
+        - 群組聊天
+      summary: 取得群組成員列表
+      description: 取得指定群組的成員列表
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+      responses:
+        '200':
+          description: 群組成員列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupMember'
+
+    post:
+      tags:
+        - 群組聊天
+      summary: 新增群組成員
+      description: 新增成員至群組（僅管理員）
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - memberIds
+              properties:
+                memberIds:
+                  type: array
+                  items:
+                    type: string
+                  description: 要新增的成員 ID 列表
+                  example: ["user_22222"]
+      responses:
+        '200':
+          description: 成員新增成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "成員已新增至群組"
+
+  /groups/{groupId}/members/{memberId}:
+    delete:
+      tags:
+        - 群組聊天
+      summary: 移除群組成員
+      description: 從群組中移除指定成員（僅管理員）
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 成員 ID
+          example: "user_67890"
+      responses:
+        '200':
+          description: 成員移除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "成員已從群組中移除"
+
+  /groups/{groupId}/members/{memberId}/promote:
+    post:
+      tags:
+        - 群組聊天
+      summary: 提升成員為管理員
+      description: 將群組成員提升為管理員（僅管理員）
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 成員 ID
+          example: "user_67890"
+      responses:
+        '200':
+          description: 成員提升成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "成員已提升為管理員"
+
+  /groups/{groupId}/leave:
+    post:
+      tags:
+        - 群組聊天
+      summary: 離開群組
+      description: 主動離開群組
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+      responses:
+        '200':
+          description: 成功離開群組
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "已離開群組"
+
+  /groups/{groupId}/messages:
+    get:
+      tags:
+        - 群組聊天
+      summary: 取得群組訊息
+      description: 取得指定群組的訊息列表
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: 每頁筆數
+        - name: before
+          in: query
+          schema:
+            type: string
+          description: 取得指定訊息 ID 之前的訊息
+          example: "msg_456"
+      responses:
+        '200':
+          description: 群組訊息列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+
+    post:
+      tags:
+        - 群組聊天
+      summary: 發送群組訊息
+      description: 向群組發送訊息
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 群組 ID
+          example: "group_123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - content
+              properties:
+                type:
+                  type: string
+                  enum: [text, image, file, voice]
+                  description: 訊息類型
+                  example: "text"
+                content:
+                  type: string
+                  description: 訊息內容
+                  maxLength: 2000
+                  example: "Hello everyone!"
+                mediaUrl:
+                  type: string
+                  description: 媒體檔案 URL
+                  example: "https://cdn.messenger-lite.com/media/12345.jpg"
+                mentions:
+                  type: array
+                  items:
+                    type: string
+                  description: 提及的使用者 ID 列表
+                  example: ["user_67890"]
+                replyToMessageId:
+                  type: string
+                  description: 回覆的訊息 ID
+                  example: "msg_789"
+      responses:
+        '201':
+          description: 群組訊息發送成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    $ref: '#/components/schemas/Message'
+
+  # ==================== 通知系統 ====================
+  /notifications:
+    get:
+      tags:
+        - 通知系統
+      summary: 取得通知列表
+      description: 取得使用者的通知列表
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: 每頁筆數
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: 僅顯示未讀通知
+      responses:
+        '200':
+          description: 通知列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  notifications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  unreadCount:
+                    type: integer
+                    example: 5
+
+  /notifications/{notificationId}/read:
+    post:
+      tags:
+        - 通知系統
+      summary: 標記通知為已讀
+      description: 將指定通知標記為已讀
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: 通知 ID
+          example: "notif_123"
+      responses:
+        '200':
+          description: 通知已標記為已讀
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "通知已標記為已讀"
+
+  /notifications/read-all:
+    post:
+      tags:
+        - 通知系統
+      summary: 標記所有通知為已讀
+      description: 將所有未讀通知標記為已讀
+      responses:
+        '200':
+          description: 所有通知已標記為已讀
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "所有通知已標記為已讀"
+
+  /notifications/settings:
+    get:
+      tags:
+        - 通知系統
+      summary: 取得通知設定
+      description: 取得使用者的通知設定
+      responses:
+        '200':
+          description: 通知設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+
+    put:
+      tags:
+        - 通知系統
+      summary: 更新通知設定
+      description: 更新使用者的通知設定
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pushEnabled:
+                  type: boolean
+                  description: 推播通知開關
+                  example: true
+                soundEnabled:
+                  type: boolean
+                  description: 聲音提醒開關
+                  example: true
+                vibrationEnabled:
+                  type: boolean
+                  description: 震動提醒開關
+                  example: true
+                doNotDisturb:
+                  type: object
+                  description: 勿打擾設定
+                  properties:
+                    enabled:
+                      type: boolean
+                      example: false
+                    startTime:
+                      type: string
+                      format: time
+                      description: 勿打擾開始時間
+                      example: "22:00"
+                    endTime:
+                      type: string
+                      format: time
+                      description: 勿打擾結束時間
+                      example: "08:00"
+                importantContacts:
+                  type: array
+                  items:
+                    type: string
+                  description: 重要聯絡人 ID 列表
+                  example: ["user_67890"]
+      responses:
+        '200':
+          description: 通知設定更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "通知設定更新成功"
+                  settings:
+                    $ref: '#/components/schemas/NotificationSettings'
+
+  # ==================== 線上狀態與隱私 ====================
+  /status:
+    get:
+      tags:
+        - 線上狀態與隱私
+      summary: 取得目前狀態
+      description: 取得使用者目前的線上狀態
+      responses:
+        '200':
+          description: 使用者線上狀態
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStatus'
+
+    put:
+      tags:
+        - 線上狀態與隱私
+      summary: 更新線上狀態
+      description: 更新使用者的線上狀態
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [online, busy, away, invisible, offline]
+                  description: 線上狀態
+                  example: "busy"
+                customMessage:
+                  type: string
+                  description: 自訂狀態訊息
+                  maxLength: 100
+                  example: "In a meeting until 3 PM"
+      responses:
+        '200':
+          description: 線上狀態更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "線上狀態更新成功"
+                  status:
+                    $ref: '#/components/schemas/UserStatus'
+
+  /privacy:
+    get:
+      tags:
+        - 線上狀態與隱私
+      summary: 取得隱私設定
+      description: 取得使用者的隱私設定
+      responses:
+        '200':
+          description: 隱私設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivacySettings'
+
+    put:
+      tags:
+        - 線上狀態與隱私
+      summary: 更新隱私設定
+      description: 更新使用者的隱私設定
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                searchPrivacy:
+                  type: string
+                  enum: [everyone, friends_only, nobody]
+                  description: 搜尋隱私設定
+                  example: "friends_only"
+                messagePrivacy:
+                  type: string
+                  enum: [everyone, friends_only, contacts_only]
+                  description: 訊息隱私設定
+                  example: "friends_only"
+                lastSeenPrivacy:
+                  type: boolean
+                  description: 是否隱藏最後上線時間
+                  example: false
+                readReceiptsEnabled:
+                  type: boolean
+                  description: 是否開啟讀取回條
+                  example: true
+                groupInvitePrivacy:
+                  type: string
+                  enum: [everyone, friends_only, disabled]
+                  description: 群組邀請隱私設定
+                  example: "friends_only"
+                onlineStatusPrivacy:
+                  type: string
+                  enum: [everyone, friends_only, nobody]
+                  description: 線上狀態隱私設定
+                  example: "friends_only"
+      responses:
+        '200':
+          description: 隱私設定更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "隱私設定更新成功"
+                  settings:
+                    $ref: '#/components/schemas/PrivacySettings'
+
+  # ==================== 檔案上傳 ====================
+  /upload/image:
+    post:
+      tags:
+        - 檔案上傳
+      summary: 上傳圖片
+      description: 上傳圖片檔案（JPG, PNG, GIF, 最大 10MB）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: 圖片檔案
+                compress:
+                  type: boolean
+                  description: 是否自動壓縮
+                  default: true
+      responses:
+        '200':
+          description: 圖片上傳成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  url:
+                    type: string
+                    example: "https://cdn.messenger-lite.com/images/12345.jpg"
+                  thumbnail:
+                    type: string
+                    example: "https://cdn.messenger-lite.com/thumbnails/12345.jpg"
+                  size:
+                    type: integer
+                    description: 檔案大小（bytes）
+                    example: 2048576
+
+  /upload/file:
+    post:
+      tags:
+        - 檔案上傳
+      summary: 上傳檔案
+      description: 上傳一般檔案（PDF, DOC, TXT 等, 最大 25MB）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 檔案
+      responses:
+        '200':
+          description: 檔案上傳成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  url:
+                    type: string
+                    example: "https://cdn.messenger-lite.com/files/document.pdf"
+                  filename:
+                    type: string
+                    example: "document.pdf"
+                  size:
+                    type: integer
+                    description: 檔案大小（bytes）
+                    example: 5242880
+                  mimeType:
+                    type: string
+                    example: "application/pdf"
+
+  /upload/voice:
+    post:
+      tags:
+        - 檔案上傳
+      summary: 上傳語音訊息
+      description: 上傳語音訊息檔案（最長 60 秒）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - voice
+              properties:
+                voice:
+                  type: string
+                  format: binary
+                  description: 語音檔案
+                duration:
+                  type: integer
+                  description: 語音長度（秒）
+                  maximum: 60
+                  example: 30
+      responses:
+        '200':
+          description: 語音訊息上傳成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  url:
+                    type: string
+                    example: "https://cdn.messenger-lite.com/voice/12345.m4a"
+                  duration:
+                    type: integer
+                    description: 語音長度（秒）
+                    example: 30
+                  size:
+                    type: integer
+                    description: 檔案大小（bytes）
+                    example: 524288
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Token 認證
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: 錯誤訊息
+          example: "Invalid credentials"
+        code:
+          type: string
+          description: 錯誤代碼
+          example: "AUTH_ERROR"
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "user_12345"
+        username:
+          type: string
+          example: "john_doe"
+        displayName:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        phoneNumber:
+          type: string
+          example: "+1234567890"
+        avatarUrl:
+          type: string
+          example: "https://cdn.messenger-lite.com/avatars/user_12345.jpg"
+        statusMessage:
+          type: string
+          example: "Busy at work"
+        isVerified:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        lastSeenAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T12:00:00Z"
+
+    PrivacySettings:
+      type: object
+      properties:
+        searchPrivacy:
+          type: string
+          enum: [everyone, friends_only, nobody]
+          example: "friends_only"
+        messagePrivacy:
+          type: string
+          enum: [everyone, friends_only, contacts_only]
+          example: "friends_only"
+        lastSeenPrivacy:
+          type: boolean
+          example: false
+        readReceiptsEnabled:
+          type: boolean
+          example: true
+        groupInvitePrivacy:
+          type: string
+          enum: [everyone, friends_only, disabled]
+          example: "friends_only"
+        onlineStatusPrivacy:
+          type: string
+          enum: [everyone, friends_only, nobody]
+          example: "friends_only"
+
+    UserSearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "user_67890"
+        username:
+          type: string
+          example: "jane_doe"
+        displayName:
+          type: string
+          example: "Jane Doe"
+        avatarUrl:
+          type: string
+          example: "https://cdn.messenger-lite.com/avatars/user_67890.jpg"
+        isFriend:
+          type: boolean
+          example: false
+        hasPendingRequest:
+          type: boolean
+          example: false
+
+    FriendRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "request_123"
+        fromUser:
+          $ref: '#/components/schemas/UserSearchResult'
+        toUser:
+          $ref: '#/components/schemas/UserSearchResult'
+        message:
+          type: string
+          example: "Hi, let's be friends!"
+        status:
+          type: string
+          enum: [pending, accepted, rejected, expired]
+          example: "pending"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2024-01-31T00:00:00Z"
+
+    Friend:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "user_67890"
+        username:
+          type: string
+          example: "jane_doe"
+        displayName:
+          type: string
+          example: "Jane Doe"
+        avatarUrl:
+          type: string
+          example: "https://cdn.messenger-lite.com/avatars/user_67890.jpg"
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        groups:
+          type: array
+          items:
+            type: string
+          example: ["work", "university"]
+        friendsSince:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    FriendGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "group_friends_123"
+        name:
+          type: string
+          example: "Work Colleagues"
+        memberCount:
+          type: integer
+          example: 5
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/Friend'
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "conv_123"
+        type:
+          type: string
+          enum: [direct, group]
+          example: "direct"
+        participant:
+          $ref: '#/components/schemas/Friend'
+        lastMessage:
+          $ref: '#/components/schemas/Message'
+        unreadCount:
+          type: integer
+          example: 3
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T12:00:00Z"
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "msg_123"
+        conversationId:
+          type: string
+          example: "conv_123"
+        senderId:
+          type: string
+          example: "user_12345"
+        sender:
+          $ref: '#/components/schemas/UserSearchResult'
+        type:
+          type: string
+          enum: [text, image, file, voice, system]
+          example: "text"
+        content:
+          type: string
+          example: "Hello Jane!"
+        mediaUrl:
+          type: string
+          example: "https://cdn.messenger-lite.com/media/12345.jpg"
+        metadata:
+          type: object
+          description: 訊息元資料（檔案名稱、大小、語音長度等）
+          properties:
+            filename:
+              type: string
+              example: "document.pdf"
+            fileSize:
+              type: integer
+              example: 1024000
+            duration:
+              type: integer
+              description: 語音長度（秒）
+              example: 30
+        replyTo:
+          $ref: '#/components/schemas/Message'
+        mentions:
+          type: array
+          items:
+            type: string
+          example: ["user_67890"]
+        status:
+          type: string
+          enum: [sending, sent, delivered, read, failed]
+          example: "read"
+        isEdited:
+          type: boolean
+          example: false
+        isDeleted:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T12:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T12:05:00Z"
+
+    Group:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "group_123"
+        name:
+          type: string
+          example: "Team Discussion"
+        description:
+          type: string
+          example: "Our project team"
+        avatarUrl:
+          type: string
+          example: "https://cdn.messenger-lite.com/groups/group_123.jpg"
+        memberCount:
+          type: integer
+          example: 5
+        maxMembers:
+          type: integer
+          example: 50
+        isPrivate:
+          type: boolean
+          example: false
+        createdBy:
+          type: string
+          example: "user_12345"
+        admins:
+          type: array
+          items:
+            type: string
+          example: ["user_12345", "user_67890"]
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    GroupMember:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserSearchResult'
+        role:
+          type: string
+          enum: [admin, member]
+          example: "member"
+        joinedAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        status:
+          $ref: '#/components/schemas/UserStatus'
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "notif_123"
+        type:
+          type: string
+          enum: [message, friend_request, group_invite, system]
+          example: "message"
+        title:
+          type: string
+          example: "新訊息"
+        body:
+          type: string
+          example: "Jane Doe: Hello John!"
+        data:
+          type: object
+          description: 通知相關資料
+          properties:
+            conversationId:
+              type: string
+              example: "conv_123"
+            messageId:
+              type: string
+              example: "msg_456"
+            senderId:
+              type: string
+              example: "user_67890"
+        isRead:
+          type: boolean
+          example: false
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T12:00:00Z"
+
+    NotificationSettings:
+      type: object
+      properties:
+        pushEnabled:
+          type: boolean
+          example: true
+        soundEnabled:
+          type: boolean
+          example: true
+        vibrationEnabled:
+          type: boolean
+          example: true
+        doNotDisturb:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              example: false
+            startTime:
+              type: string
+              format: time
+              example: "22:00"
+            endTime:
+              type: string
+              format: time
+              example: "08:00"
+        importantContacts:
+          type: array
+          items:
+            type: string
+          example: ["user_67890"]
+        contactSettings:
+          type: object
+          description: 個別聯絡人通知設定
+          additionalProperties:
+            type: object
+            properties:
+              enabled:
+                type: boolean
+                example: true
+              soundOnly:
+                type: boolean
+                example: false
+              muted:
+                type: boolean
+                example: false
+
+    UserStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [online, busy, away, invisible, offline]
+          example: "online"
+        customMessage:
+          type: string
+          example: "In a meeting until 3 PM"
+        lastSeenAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T12:00:00Z"
+        isOnline:
+          type: boolean
+          example: true

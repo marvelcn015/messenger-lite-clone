@@ -1,0 +1,49 @@
+{
+  "name": "messenger-lite-clone",
+  "version": "1.0.0",
+  "description": "A messenger lite clone built with Express.js, TypeScript, and BDD approach",
+  "main": "dist/app.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "nodemon --exec ts-node src/app.ts",
+    "docs": "node docs/serve-docs.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:bdd": "cucumber-js",
+    "test:bdd-html": "cucumber-js --format @cucumber/pretty-formatter --format html:reports/cucumber-report.html",
+    "lint": "echo 'Add ESLint later'",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^12.1.0",
+    "@cucumber/pretty-formatter": "^2.0.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.2.0",
+    "@types/supertest": "^6.0.3",
+    "cucumber-html-reporter": "^7.2.0",
+    "jest": "^30.0.5",
+    "markdown-it": "^14.1.0",
+    "markdown-it-mermaid": "^0.2.5",
+    "mermaid": "^11.9.0",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.1.4",
+    "swagger-ui-express": "^5.0.1",
+    "ts-jest": "^29.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2",
+    "yamljs": "^0.3.0"
+  }
+}
